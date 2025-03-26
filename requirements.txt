@@ -1,0 +1,13 @@
+# Dependencies
+pandas
+numpy
+matplotlib
+seaborn
+datasets
+transformers
+scikit-learn
+torch
+
+# VS Code
+ipykernel
+ipython
