@@ -7,6 +7,7 @@ datasets
 transformers
 scikit-learn
 torch
+nltk
 
 # VS Code
 ipykernel
