@@ -8,6 +8,8 @@ transformers
 scikit-learn
 torch
 nltk
+dotenv
+requests
 
 # VS Code
 ipykernel
