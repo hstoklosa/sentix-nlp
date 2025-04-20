@@ -3,7 +3,7 @@ import os
 import time
 import logging
 import requests
-
+import json
 from dotenv import load_dotenv
 import pandas as pd
 
@@ -15,11 +15,10 @@ logging.basicConfig(
 
 
 class CoindeskArticleFetcher:
-    
     def __init__(self):
         self.base_url = "https://data-api.coindesk.com/news/v1/article/list"
         self.api_key = os.getenv("COINDESK_API_KEY")
-        self.dataset_path = "crypto_sentiment_dataset.csv"
+        self.dataset_path = "coindesk_news.csv"
         
     def check_api_key(self):
         return self.api_key is not None
@@ -77,7 +76,7 @@ class CoindeskArticleFetcher:
             all_articles.extend(batch)
             offset += batch_size
             
-            time.sleep(1) # avoid hitting rate limits
+            time.sleep(2) # avoid hitting rate limits
             logging.info(f"Fetched {len(all_articles)} articles so far")
             
             # fewer articles than requested == reached the end
@@ -91,6 +90,8 @@ class CoindeskArticleFetcher:
         
         for article in articles:
             try:
+                # print(json.dumps(article, indent=4))
+                
                 # Convert UNIX timestamp to readable date format and
                 # extract relevant fields according to the API schema
                 published_date = datetime.fromtimestamp(article.get("PUBLISHED_ON", 0))
@@ -127,7 +128,6 @@ class CoindeskArticleFetcher:
             
         df.to_csv(output_path, index=False)
         logging.info(f"Dataset saved to {output_path}")
-
     
     def create_dataset(self, days_back=90, max_articles=5000):
         articles = self.fetch_all_articles(days_back, max_articles=max_articles)
@@ -141,7 +141,6 @@ class CoindeskArticleFetcher:
         
         sentiment_counts = df["sentiment"].value_counts()
         logging.info(f"Dataset sentiment distribution: {sentiment_counts.to_dict()}")
-        
         return df
 
 
@@ -153,7 +152,7 @@ def main():
         logging.error("API key is required to fetch articles. Please set the COINDESK_API_KEY environment variable.")
         return
     
-    dataset = fetcher.create_dataset(days_back=7, max_articles=10)
+    dataset = fetcher.create_dataset(days_back=360, max_articles=10000)
     
     if dataset is not None:
         logging.info(f"Successfully created dataset with {len(dataset)} articles")
