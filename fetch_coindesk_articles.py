@@ -18,33 +18,35 @@ class CoindeskArticleFetcher:
     def __init__(self):
         self.base_url = "https://data-api.coindesk.com/news/v1/article/list"
         self.api_key = os.getenv("COINDESK_API_KEY")
-        self.dataset_path = "coindesk_news.csv"
+        self.dataset_path = "data/coindesk_news.csv"
         
     def check_api_key(self):
         return self.api_key is not None
     
-    def fetch_articles(self, days_back=30, limit=100, offset=0):
+    def fetch_articles(self, days_back=30, limit=100, to_timestamp=None):
         if not self.check_api_key():
             return []
             
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
-        start_date_str = start_date.strftime("%Y-%m-%d")
-        end_date_str = end_date.strftime("%Y-%m-%d")
         
-        logging.info(f"Fetching articles from {start_date_str} to {end_date_str}")
+        logging.info(f"Fetching articles from the past {days_back} days")
+        
+        params = {
+            "limit": limit,
+            "lang": "EN",
+            "includeSentiment": "true"
+        }
+        
+        # If a timestamp is provided, use it to set the upper time boundary
+        if to_timestamp is not None:
+            params["to_ts"] = to_timestamp
+            logging.info(f"Fetching articles published before timestamp: {to_timestamp}")
         
         try:
             response = requests.get(
                 self.base_url,
-                params={
-                    "startDate": start_date_str,
-                    "endDate": end_date_str,
-                    "limit": limit,
-                    "offset": offset,
-                    "includeSentiment": "true",
-                    "format": "json"
-                },
+                params=params,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json"
@@ -66,21 +68,47 @@ class CoindeskArticleFetcher:
     
     def fetch_all_articles(self, days_back=30, batch_size=100, max_articles=1000):
         all_articles = []
-        offset = 0
+        seen_guids = set()  # Track unique article GUIDs
+        to_timestamp = None  # Start with no timestamp filter
         
         while len(all_articles) < max_articles:
-            batch = self.fetch_articles(days_back, batch_size, offset)
+            batch = self.fetch_articles(days_back, batch_size, to_timestamp)
+            
             if not batch:
+                logging.info("No more articles to fetch")
                 break
-                
-            all_articles.extend(batch)
-            offset += batch_size
             
-            time.sleep(2) # avoid hitting rate limits
-            logging.info(f"Fetched {len(all_articles)} articles so far")
+            # Find unique articles in the batch
+            unique_articles = []
+            for article in batch:
+                guid = article.get("GUID")
+                if guid and guid not in seen_guids:
+                    seen_guids.add(guid)
+                    unique_articles.append(article)
             
-            # fewer articles than requested == reached the end
+            # Add unique articles to our collection
+            all_articles.extend(unique_articles)
+            logging.info(f"Added {len(unique_articles)} unique articles (total: {len(all_articles)})")
+            
+            # If we didn't get any new unique articles, break
+            if not unique_articles:
+                logging.info("No new unique articles in the batch")
+                break
+            
+            # Find the oldest article's timestamp in the batch for the next query
+            if batch:
+                # Sort by publish time ascending and get the oldest
+                sorted_batch = sorted(batch, key=lambda x: x.get("PUBLISHED_ON", 0))
+                oldest_timestamp = sorted_batch[0].get("PUBLISHED_ON", 0)
+                # Subtract 1 second to avoid getting the same article again
+                to_timestamp = oldest_timestamp - 1 if oldest_timestamp > 0 else None
+                logging.info(f"Next query will fetch articles older than {datetime.fromtimestamp(to_timestamp) if to_timestamp else 'N/A'}")
+            
+            time.sleep(2)  # Avoid hitting rate limits
+            
+            # If we got fewer articles than requested, we've likely reached the end
             if len(batch) < batch_size:
+                logging.info("Reached the end of available articles")
                 break
         
         return all_articles[:max_articles]
@@ -90,8 +118,6 @@ class CoindeskArticleFetcher:
         
         for article in articles:
             try:
-                # print(json.dumps(article, indent=4))
-                
                 # Convert UNIX timestamp to readable date format and
                 # extract relevant fields according to the API schema
                 published_date = datetime.fromtimestamp(article.get("PUBLISHED_ON", 0))
@@ -152,7 +178,7 @@ def main():
         logging.error("API key is required to fetch articles. Please set the COINDESK_API_KEY environment variable.")
         return
     
-    dataset = fetcher.create_dataset(days_back=360, max_articles=10000)
+    dataset = fetcher.create_dataset(days_back=600, max_articles=15000)
     
     if dataset is not None:
         logging.info(f"Successfully created dataset with {len(dataset)} articles")
