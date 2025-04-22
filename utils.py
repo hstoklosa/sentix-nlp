@@ -1,6 +1,29 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
+def predict_sentiment(texts, model, tokenizer, batch_size=16):
+    model.eval()
+    predictions = []
+
+    # Process data in batches
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i+batch_size].tolist()
+
+        # Tokenize
+        encodings = tokenizer(batch_texts, truncation=True, padding=True, max_length=128, return_tensors="pt")
+        input_ids = encodings["input_ids"].to(device)
+        attention_mask = encodings["attention_mask"].to(device)
+
+        # Predict
+        with torch.no_grad():
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            logits = outputs.logits
+            preds = torch.argmax(logits, dim=-1).cpu().numpy()
+            predictions.extend(preds)
+
+    return predictions
+
+
 def compute_metrics(preds, labels, average='weighted'):
     """
     Compute accuracy, precision, recall, and F1 score based on predictions.   
@@ -15,6 +38,7 @@ def compute_metrics(preds, labels, average='weighted'):
         'recall': recall,
         'f1': f1
     }
+
 
 class NewsDataset(torch.utils.data.Dataset):
     """
