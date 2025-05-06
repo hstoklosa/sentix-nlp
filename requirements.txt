@@ -10,6 +10,8 @@ torch
 nltk
 dotenv
 requests
+optuna
+tqdm
 
 # VS Code
 ipykernel
